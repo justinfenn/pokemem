@@ -11,14 +11,26 @@ func main() {
   pid := getPid()
   search_val := getSearchVal()
   attachToProcess(pid)
-  matchingAddresses := search(search_val, pid)
-  fmt.Println(len(matchingAddresses))
+  matchingAddresses := searchRegions(search_val, pid)
   detach(pid)
-  // get new search value
-  // reattach
-  // search target mem again
-  // repeat until a single match is found
-  // then poke with new value
+  for len(matchingAddresses) > 1 {
+    fmt.Println("num matches:", len(matchingAddresses))
+    //resumeTracee(pid)
+    search_val = getSearchVal()
+    // TODO can we resume easily, or should we just detach/reattach every time?
+    attachToProcess(pid)
+    matchingAddresses = searchOldMatches(search_val, matchingAddresses, pid)
+    detach(pid)
+  }
+  if len(matchingAddresses) == 1 {
+    fmt.Println("found a single match!")
+    replace_val := getReplacementValue()
+    attachToProcess(pid)
+    pokeData(pid, replace_val, matchingAddresses[0])
+    detach(pid)
+  } else {
+    fmt.Println("no matches found")
+  }
 }
 
 func getPid() int {
@@ -30,6 +42,12 @@ func getPid() int {
 func getSearchVal() int64 {
   var val int64
   getIntFromUser("value to find: ", &val)
+  return val
+}
+
+func getReplacementValue() int {
+  var val int
+  getIntFromUser("replacement value: ", &val)
   return val
 }
 
@@ -50,8 +68,18 @@ func attachToProcess(pid int) {
   if err != nil {
     panic(err)
   }
+  waitForStop(pid)
   // replace with optional logging?
   fmt.Println("successfully attached to", pid)
+}
+
+func waitForStop(pid int) {
+  var status syscall.WaitStatus
+  _, err := syscall.Wait4(pid, &status, 0, nil)
+  if err != nil || !status.Stopped() {
+    // LOG
+    fmt.Println("target didn't stop")
+  }
 }
 
 func detach(pid int) {
@@ -64,11 +92,47 @@ func detach(pid int) {
   fmt.Println("detached from", pid)
 }
 
+func pokeData(pid, data int, addr int64) {
+  dataBytes := intToBytes(data)
+  fmt.Println("replacing with value:", bytesToInt(dataBytes))
+  _, err := syscall.PtracePokeData(pid, uintptr(addr), dataBytes)
+  if err != nil {
+    fmt.Println("unable to write data")
+  }
+}
+
+func resumeTracee(pid int) {
+  err := syscall.PtraceCont(pid, syscall.PTRACE_CONT)
+  if err != nil {
+    panic(err)
+  }
+}
+
+func searchOldMatches(val int64, oldMatches []int64, pid int) []int64 {
+  var matches []int64
+  mem := openMemFile(pid)
+  defer mem.Close()
+  matches = appendMatches(val, matches, oldMatches, mem)
+  return matches
+}
+
+func appendMatches(val int64, matches, oldMatches []int64, mem *os.File) []int64 {
+  var size int64 = 4  // TODO replace with global or user value
+  for _, addr := range oldMatches {
+    bytes := getBytes(addr, size, mem)
+    current := bytesToInt(bytes)
+    if current == val {
+      matches = append(matches, addr)
+    }
+  }
+  return matches
+}
+
 type Region struct {
   start, end int64
 }
 
-func search(val int64, pid int) []int64 {
+func searchRegions(val int64, pid int) []int64 {
   var matches []int64
   regions := getWritableRegions(pid)
   mem := openMemFile(pid)
@@ -88,7 +152,7 @@ func openMemFile(pid int) *os.File {
 }
 
 func appendRegionMatches(val int64, matches []int64, region Region, mem *os.File) []int64 {
-  segment := getBytes(region.start, region.end, mem)
+  segment := getBytes(region.start, region.end - region.start, mem)
   size := 4
   for addr := 0; addr < len(segment); addr += size {
     current := bytesToInt(segment[addr:addr + size])
@@ -99,8 +163,8 @@ func appendRegionMatches(val int64, matches []int64, region Region, mem *os.File
   return matches
 }
 
-func getBytes(start, end int64, mem *os.File) []byte {
-  result := make([]byte, end - start)
+func getBytes(start, length int64, mem *os.File) []byte {
+  result := make([]byte, length)
   mem.Seek(start, 0)
   totalBytesRead := 0
   for totalBytesRead < len(result) {
@@ -111,6 +175,15 @@ func getBytes(start, end int64, mem *os.File) []byte {
     totalBytesRead += bytesRead
   }
   return result
+}
+
+func intToBytes(data int) []byte {
+  bytes := make([]byte, 4)
+  bytes[0] = byte(data)
+  bytes[1] = byte(data >> 8)
+  bytes[2] = byte(data >> 16)
+  bytes[3] = byte(data >> 24)
+  return bytes
 }
 
 func bytesToInt(bytes []byte) int64 {
