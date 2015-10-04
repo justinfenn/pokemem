@@ -4,8 +4,13 @@ import "bufio"
 import "fmt"
 import "os"
 import "regexp"
+import "runtime"
 import "strconv"
 import "syscall"
+
+func init() {
+	runtime.LockOSThread()
+}
 
 func main() {
 	pid := getPid()
