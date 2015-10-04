@@ -9,24 +9,24 @@ import "syscall"
 
 func main() {
 	pid := getPid()
-	search_val := getSearchVal()
+	searchVal := getSearchVal()
 	attachToProcess(pid)
-	matchingAddresses := searchRegions(search_val, pid)
+	matchingAddresses := searchRegions(searchVal, pid)
 	detach(pid)
 	for len(matchingAddresses) > 1 {
 		fmt.Println("num matches:", len(matchingAddresses))
 		//resumeTracee(pid)
-		search_val = getSearchVal()
+		searchVal = getSearchVal()
 		// TODO can we resume easily, or should we just detach/reattach every time?
 		attachToProcess(pid)
-		matchingAddresses = searchOldMatches(search_val, matchingAddresses, pid)
+		matchingAddresses = searchOldMatches(searchVal, matchingAddresses, pid)
 		detach(pid)
 	}
 	if len(matchingAddresses) == 1 {
 		fmt.Println("found a single match!")
-		replace_val := getReplacementValue()
+		replaceVal := getReplacementValue()
 		attachToProcess(pid)
-		pokeData(pid, replace_val, matchingAddresses[0])
+		pokeData(pid, replaceVal, matchingAddresses[0])
 		detach(pid)
 	} else {
 		fmt.Println("no matches found")
