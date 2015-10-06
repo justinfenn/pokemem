@@ -1,12 +1,16 @@
 package main
 
-import "bufio"
-import "fmt"
-import "os"
-import "regexp"
-import "runtime"
-import "strconv"
-import "syscall"
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"os"
+	"regexp"
+	"runtime"
+	"strconv"
+	"syscall"
+)
 
 func init() {
 	runtime.LockOSThread()
@@ -40,14 +44,14 @@ func getPid() int {
 	return pid
 }
 
-func getSearchVal() int64 {
-	var val int64
+func getSearchVal() int32 {
+	var val int32
 	getIntFromUser("value to find: ", &val)
 	return val
 }
 
-func getReplacementValue() int {
-	var val int
+func getReplacementValue() int32 {
+	var val int32
 	getIntFromUser("replacement value: ", &val)
 	return val
 }
@@ -93,7 +97,7 @@ func detach(pid int) {
 	fmt.Println("detached from", pid)
 }
 
-func pokeData(pid, data int, addr int64) {
+func pokeData(pid int, data int32, addr int64) {
 	dataBytes := intToBytes(data)
 	fmt.Println("replacing with value:", bytesToInt(dataBytes))
 	_, err := syscall.PtracePokeData(pid, uintptr(addr), dataBytes)
@@ -117,7 +121,7 @@ func stopProcess(pid int) {
 	waitForStop(pid)
 }
 
-func searchOldMatches(val int64, oldMatches []int64, pid int) []int64 {
+func searchOldMatches(val int32, oldMatches []int64, pid int) []int64 {
 	var matches []int64
 	mem := openMemFile(pid)
 	defer mem.Close()
@@ -125,7 +129,7 @@ func searchOldMatches(val int64, oldMatches []int64, pid int) []int64 {
 	return matches
 }
 
-func appendMatches(val int64, matches, oldMatches []int64, mem *os.File) []int64 {
+func appendMatches(val int32, matches, oldMatches []int64, mem *os.File) []int64 {
 	var size int64 = 4 // TODO replace with global or user value
 	for _, addr := range oldMatches {
 		bytes := getBytes(addr, size, mem)
@@ -141,7 +145,7 @@ type Region struct {
 	start, end int64
 }
 
-func searchRegions(val int64, pid int) []int64 {
+func searchRegions(val int32, pid int) []int64 {
 	var matches []int64
 	regions := getWritableRegions(pid)
 	mem := openMemFile(pid)
@@ -160,7 +164,7 @@ func openMemFile(pid int) *os.File {
 	return file
 }
 
-func appendRegionMatches(val int64, matches []int64, region Region, mem *os.File) []int64 {
+func appendRegionMatches(val int32, matches []int64, region Region, mem *os.File) []int64 {
 	segment := getBytes(region.start, region.end-region.start, mem)
 	size := 4
 	for addr := 0; addr < len(segment); addr += size {
@@ -186,18 +190,22 @@ func getBytes(start, length int64, mem *os.File) []byte {
 	return result
 }
 
-func intToBytes(data int) []byte {
-	bytes := make([]byte, 4)
-	bytes[0] = byte(data)
-	bytes[1] = byte(data >> 8)
-	bytes[2] = byte(data >> 16)
-	bytes[3] = byte(data >> 24)
-	return bytes
+func intToBytes(data int32) []byte {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.LittleEndian, data)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return buf.Bytes()
 }
 
-func bytesToInt(bytes []byte) int64 {
-	// TODO handle different sizes -- hardcoded to 4 now
-	return int64(bytes[0]) | int64(bytes[1])<<8 | int64(bytes[2])<<16 | int64(bytes[3])<<24
+func bytesToInt(data []byte) int32 {
+	var result int32
+	err := binary.Read(bytes.NewBuffer(data), binary.LittleEndian, &result)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return result
 }
 
 func getWritableRegions(pid int) []Region {
