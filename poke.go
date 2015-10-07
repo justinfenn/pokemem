@@ -130,11 +130,11 @@ func searchOldMatches(val int32, oldMatches []int64, pid int) []int64 {
 }
 
 func appendMatches(val int32, matches, oldMatches []int64, mem *os.File) []int64 {
+	valBytes := intToBytes(val)
 	var size int64 = 4 // TODO replace with global or user value
 	for _, addr := range oldMatches {
-		bytes := getBytes(addr, size, mem)
-		current := bytesToInt(bytes)
-		if current == val {
+		current := getBytes(addr, size, mem)
+		if bytes.Equal(valBytes, current) {
 			matches = append(matches, addr)
 		}
 	}
@@ -165,12 +165,12 @@ func openMemFile(pid int) *os.File {
 }
 
 func appendRegionMatches(val int32, matches []int64, region Region, mem *os.File) []int64 {
+	valBytes := intToBytes(val)
 	segment := getBytes(region.start, region.end-region.start, mem)
 	size := 4
-	for addr := 0; addr < len(segment); addr += size {
-		current := bytesToInt(segment[addr : addr+size])
-		if current == val {
-			matches = append(matches, region.start+int64(addr))
+	for offset := 0; offset < len(segment); offset += size {
+		if bytes.Equal(valBytes, segment[offset:offset+size]) {
+			matches = append(matches, region.start+int64(offset))
 		}
 	}
 	return matches
