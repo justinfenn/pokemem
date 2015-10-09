@@ -229,7 +229,6 @@ func getWritableRegions(pid int) []Region {
 	return regions
 }
 
-//var memSegRE = regexp.MustCompile(`([\da-f]+)-([\da-f]+) +.w.. +[^\s]+ +[^\s]+ +0 +.*`)
 var memSegRE = regexp.MustCompile(`([\da-f]+)-([\da-f]+) +.w.. +.*`)
 
 func getRegionIfMatch(line string) *Region {
