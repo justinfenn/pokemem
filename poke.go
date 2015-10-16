@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"runtime"
@@ -132,8 +133,10 @@ func searchOldMatches(val int32, oldMatches []int64, pid int) []int64 {
 func appendMatches(val int32, matches, oldMatches []int64, mem *os.File) []int64 {
 	valBytes := intToBytes(val)
 	var size int64 = 4 // TODO replace with global or user value
+	buf := make([]byte, size)
 	for _, addr := range oldMatches {
-		current := getBytes(addr, size, mem)
+		mem.Seek(addr, 0)
+		current := fill(buf, mem)
 		if bytes.Equal(valBytes, current) {
 			matches = append(matches, addr)
 		}
@@ -165,29 +168,33 @@ func openMemFile(pid int) *os.File {
 }
 
 func appendRegionMatches(val int32, matches []int64, region Region, mem *os.File) []int64 {
+	var bufSize int64 = 4096
+	buf := make([]byte, bufSize)
+	mem.Seek(region.start, 0)
+	for offset := region.start; offset < region.end; offset += bufSize {
+		segmentLen := min(bufSize, region.end-offset)
+		matches = appendSegmentMatches(val, matches, offset, fill(buf[:segmentLen], mem))
+	}
+	return matches
+}
+
+func appendSegmentMatches(val int32, matches []int64, position int64, segment []byte) []int64 {
 	valBytes := intToBytes(val)
-	segment := getBytes(region.start, region.end-region.start, mem)
 	size := 4
 	for offset := 0; offset < len(segment); offset += size {
 		if bytes.Equal(valBytes, segment[offset:offset+size]) {
-			matches = append(matches, region.start+int64(offset))
+			matches = append(matches, position+int64(offset))
 		}
 	}
 	return matches
 }
 
-func getBytes(start, length int64, mem *os.File) []byte {
-	result := make([]byte, length)
-	mem.Seek(start, 0)
-	totalBytesRead := 0
-	for totalBytesRead < len(result) {
-		bytesRead, err := mem.Read(result[totalBytesRead:])
-		if err != nil {
-			panic(err)
-		}
-		totalBytesRead += bytesRead
+func fill(buf []byte, mem *os.File) []byte {
+	_, err := io.ReadFull(mem, buf)
+	if err != nil {
+		panic(err)
 	}
-	return result
+	return buf
 }
 
 func intToBytes(data int32) []byte {
@@ -240,4 +247,12 @@ func getRegionIfMatch(line string) *Region {
 		return &region
 	}
 	return nil
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
 }
