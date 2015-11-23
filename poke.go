@@ -45,16 +45,16 @@ func getPid() int {
 	return pid
 }
 
-func getSearchVal() int32 {
+func getSearchVal() []byte {
 	var val int32
 	getIntFromUser("value to find: ", &val)
-	return val
+	return intToBytes(val)
 }
 
-func getReplacementValue() int32 {
+func getReplacementValue() []byte {
 	var val int32
 	getIntFromUser("replacement value: ", &val)
-	return val
+	return intToBytes(val)
 }
 
 func getIntFromUser(prompt string, i interface{}) {
@@ -98,8 +98,7 @@ func detach(pid int) {
 	fmt.Println("detached from", pid)
 }
 
-func pokeData(pid int, data int32, addr int64) {
-	dataBytes := intToBytes(data)
+func pokeData(pid int, dataBytes []byte, addr int64) {
 	fmt.Println("replacing with value:", bytesToInt(dataBytes))
 	_, err := syscall.PtracePokeData(pid, uintptr(addr), dataBytes)
 	if err != nil {
@@ -122,7 +121,7 @@ func stopProcess(pid int) {
 	waitForStop(pid)
 }
 
-func searchOldMatches(val int32, oldMatches []int64, pid int) []int64 {
+func searchOldMatches(val []byte, oldMatches []int64, pid int) []int64 {
 	var matches []int64
 	mem := openMemFile(pid)
 	defer mem.Close()
@@ -130,14 +129,12 @@ func searchOldMatches(val int32, oldMatches []int64, pid int) []int64 {
 	return matches
 }
 
-func appendMatches(val int32, matches, oldMatches []int64, mem *os.File) []int64 {
-	valBytes := intToBytes(val)
-	var size int64 = 4 // TODO replace with global or user value
-	buf := make([]byte, size)
+func appendMatches(val []byte, matches, oldMatches []int64, mem *os.File) []int64 {
+	buf := make([]byte, len(val))
 	for _, addr := range oldMatches {
 		mem.Seek(addr, 0)
 		current := fill(buf, mem)
-		if bytes.Equal(valBytes, current) {
+		if bytes.Equal(val, current) {
 			matches = append(matches, addr)
 		}
 	}
@@ -148,7 +145,7 @@ type Region struct {
 	start, end int64
 }
 
-func searchRegions(val int32, pid int) []int64 {
+func searchRegions(val []byte, pid int) []int64 {
 	var matches []int64
 	regions := getWritableRegions(pid)
 	mem := openMemFile(pid)
@@ -167,7 +164,7 @@ func openMemFile(pid int) *os.File {
 	return file
 }
 
-func appendRegionMatches(val int32, matches []int64, region Region, mem *os.File) []int64 {
+func appendRegionMatches(val []byte, matches []int64, region Region, mem *os.File) []int64 {
 	var bufSize int64 = 4096
 	buf := make([]byte, bufSize)
 	mem.Seek(region.start, 0)
@@ -178,11 +175,10 @@ func appendRegionMatches(val int32, matches []int64, region Region, mem *os.File
 	return matches
 }
 
-func appendSegmentMatches(val int32, matches []int64, position int64, segment []byte) []int64 {
-	valBytes := intToBytes(val)
-	size := 4
+func appendSegmentMatches(val []byte, matches []int64, position int64, segment []byte) []int64 {
+	size := len(val)
 	for offset := 0; offset < len(segment); offset += size {
-		if bytes.Equal(valBytes, segment[offset:offset+size]) {
+		if bytes.Equal(val, segment[offset:offset+size]) {
 			matches = append(matches, position+int64(offset))
 		}
 	}
