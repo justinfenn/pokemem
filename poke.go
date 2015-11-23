@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,7 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
 	pid := getPid()
 	searchVal := getSearchVal()
 	attachToProcess(pid)
@@ -40,9 +42,15 @@ func main() {
 }
 
 func getPid() int {
-	var pid int
-	getIntFromUser("target pid: ", &pid)
-	return pid
+	if flag.NArg() > 0 {
+		pid, err := strconv.Atoi(flag.Arg(0))
+		if err != nil {
+			panic(err)
+		}
+		return pid
+	} else {
+		panic("target process id required")
+	}
 }
 
 func getSearchVal() []byte {
