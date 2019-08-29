@@ -83,7 +83,6 @@ func attachToProcess(pid int) {
 		panic(err)
 	}
 	waitForStop(pid)
-	// replace with optional logging?
 	fmt.Println("successfully attached to", pid)
 }
 
@@ -91,7 +90,6 @@ func waitForStop(pid int) {
 	var status syscall.WaitStatus
 	_, err := syscall.Wait4(pid, &status, 0, nil)
 	if err != nil || !status.Stopped() {
-		// LOG
 		fmt.Println("target didn't stop")
 	}
 }
@@ -102,7 +100,6 @@ func detach(pid int) {
 	if err != nil {
 		panic(err)
 	}
-	// replace with optional logging?
 	fmt.Println("detached from", pid)
 }
 
